@@ -1,10 +1,11 @@
 /**
- * 主应用入口 - 支持多分包
+ * 主应用入口 - 支持多分包 + 错误处理
  */
 
 import React, { Suspense, useState } from 'react';
 import { View, StyleSheet, ActivityIndicator } from 'react-native';
 import HomeScreen from './src/screens/HomeScreen';
+import ChunkErrorBoundary from './src/components/ChunkErrorBoundary';
 
 // 使用 React.lazy 和 webpackChunkName 实现多分包加载
 const FeatureScreen = React.lazy(
@@ -51,9 +52,11 @@ function App(): React.JSX.Element {
     const Screen = screens[currentScreen];
     if (Screen) {
       return (
-        <Suspense fallback={<ActivityIndicator size="large" style={styles.loading} />}>
-          <Screen navigation={{ goBack }} />
-        </Suspense>
+        <ChunkErrorBoundary onGoBack={goBack}>
+          <Suspense fallback={<ActivityIndicator size="large" style={styles.loading} />}>
+            <Screen navigation={{ goBack }} />
+          </Suspense>
+        </ChunkErrorBoundary>
       );
     }
 
