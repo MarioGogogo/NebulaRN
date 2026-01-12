@@ -34,16 +34,30 @@ export default Repack.defineRspackConfig({
   },
   plugins: [
     new Repack.RepackPlugin({
-      // 远程分包配置：分包输出到远程服务器，APK 启动时下载
+      // 多分包配置：每个功能模块独立打包
       extraChunks: [
         {
-          // 匹配 feature 分包，设为远程加载
           include: /feature/,
           type: 'remote',
           outputPath: path.join(__dirname, 'build/output/android/remote'),
         },
         {
-          // 兜底规则：其他 chunks 也作为 remote 处理
+          include: /settings/,
+          type: 'remote',
+          outputPath: path.join(__dirname, 'build/output/android/remote'),
+        },
+        {
+          include: /profile/,
+          type: 'remote',
+          outputPath: path.join(__dirname, 'build/output/android/remote'),
+        },
+        {
+          include: /shop/,
+          type: 'remote',
+          outputPath: path.join(__dirname, 'build/output/android/remote'),
+        },
+        {
+          // 兜底规则
           include: /.*/,
           type: 'remote',
           outputPath: path.join(__dirname, 'build/output/android/remote'),

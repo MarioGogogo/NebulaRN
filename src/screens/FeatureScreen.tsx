@@ -1,10 +1,11 @@
 /**
  * 分包页面 - FeatureScreen
- * 文件名以 "local" 结尾，会被打包成本地 chunk
+ * 使用共用组件 BackButton 和 Badge
  */
 
 import React from 'react';
-import { View, Text, Button, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import BackButton, { Badge } from '../components/BackButton';
 
 interface FeatureScreenProps {
   navigation: {
@@ -15,10 +16,13 @@ interface FeatureScreenProps {
 export default function FeatureScreen({ navigation }: FeatureScreenProps) {
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>分包页面</Text>
-      <Text style={styles.description}>这是一个分包页面 (FeatureScreen.local)</Text>
-      <Text style={styles.info}>分包可以按需加载，减少主包体积</Text>
-      <Button title="返回" onPress={() => navigation.goBack()} />
+      <View style={styles.header}>
+        <Text style={styles.title}>🚀 功能页面</Text>
+        <Badge text="feature" color="#F44336" />
+      </View>
+      <Text style={styles.description}>这是 Feature 分包</Text>
+      <Text style={styles.info}>使用了共用组件 BackButton 和 Badge</Text>
+      <BackButton onPress={() => navigation.goBack()} color="#F44336" />
     </View>
   );
 }
@@ -28,13 +32,18 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#FFEBEE',
+    padding: 20,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
   },
   title: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: 'bold',
-    marginBottom: 16,
-    color: '#333',
+    color: '#C62828',
   },
   description: {
     fontSize: 16,
@@ -45,5 +54,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#999',
     marginBottom: 24,
+    textAlign: 'center',
   },
 });
