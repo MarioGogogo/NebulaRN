@@ -1,100 +1,243 @@
-This is a new [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
+# NebulaRN2 - React Native 代码分割实践
 
-# Getting Started
+基于 React Native 0.77 + Re.Pack 的模块化分包示例项目，演示如何实现远程代码加载和动态更新。
 
-> **Note**: Make sure you have completed the [Set Up Your Environment](https://reactnative.dev/docs/set-up-your-environment) guide before proceeding.
+![主界面](sceen.png)
 
-## Step 1: Start Metro
+## 技术栈
 
-First, you will need to run **Metro**, the JavaScript build tool for React Native.
+| 技术 | 用途 |
+|------|------|
+| React Native 0.77.0 | 跨平台移动开发框架 |
+| TypeScript 5.0 | 类型安全 |
+| @callstack/repack 5.2.3 | 代码分割与远程加载 |
+| Zustand | 轻量级状态管理 |
 
-To start the Metro dev server, run the following command from the root of your React Native project:
+## 架构概览
 
-```sh
-# Using npm
+```
+┌─────────────────────────────────────────────────────┐
+│                      App.tsx                        │
+│  ┌─────────────┐    ┌─────────────────────────────┐ │
+│  │  HomeScreen │───▶│ ChunkErrorBoundary          │ │
+│  └─────────────┘    │ ┌─────────────────────────┐ │ │
+│                     │ │ Suspense → Screen       │ │ │
+│                     │ │ (动态加载的分包)         │ │ │
+│                     │ └─────────────────────────┘ │ │
+│                     └─────────────────────────────┘ │
+└─────────────────────────────────────────────────────┘
+                              │
+                              ▼
+                    ┌─────────────────┐
+                    │ ScriptManager   │
+                    │ (Re.Pack)       │
+                    └────────┬────────┘
+                             │
+              ┌──────────────┴──────────────┐
+              ▼                             ▼
+        ┌──────────┐                 ┌──────────┐
+        │ DevServer│                 │ 远程服务器│
+        │ (开发环境)│                 │ (生产环境)│
+        └──────────┘                 └──────────┘
+```
+
+## 分包结构
+
+| 分包名称 | 加载路径 | 功能 |
+|----------|----------|------|
+| feature | `src/screens/FeatureScreen.tsx` | 功能演示页 |
+| settings | `src/screens/SettingsScreen.tsx` | 设置页 |
+| profile | `src/screens/ProfileScreen.tsx` | 个人页 |
+| shop | `src/screens/ShopScreen.tsx` | 商城页（带购物车状态共享） |
+| update | `src/screens/UpdateTestScreen.tsx` | 更新测试页 |
+
+## 核心实现
+
+### 1. 入口配置 (index.js)
+
+```javascript
+// 配置 ScriptManager 的 Resolver
+ScriptManager.shared.addResolver(async scriptId => {
+  const config = remoteBundleConfig[scriptId];
+  const url = typeof config === 'string' ? config : config.url;
+  const latestVersion = typeof config === 'string' ? null : config.version;
+
+  // 版本号作为 URL 参数，触发 Re.Pack 缓存更新
+  const versionedUrl = latestVersion ? `${url}?v=${latestVersion}` : url;
+
+  return { url: versionedUrl, cache: true };
+});
+```
+
+### 2. 版本检查与更新
+
+```typescript
+// index.js - 版本检查逻辑
+const isUpdateAvailable = cachedVersion && cachedVersion !== latestVersion;
+
+if (isUpdateAvailable) {
+  // 通知 UI 显示更新对话框
+  onVersionCheckCallback({
+    screen: scriptId,
+    currentVersion: cachedVersion,
+    latestVersion: latestVersion,
+    isUpdateAvailable: true,
+  });
+}
+```
+
+### 3. 更新弹窗组件
+
+```typescript
+// UpdateDialog.tsx
+interface UpdateDialogProps {
+  onUpdate: () => void;   // 用户确认更新
+  onCancel: () => void;   // 用户取消
+}
+
+// 点击更新后执行：
+// 1. 清除模块缓存 ScriptManager.shared.invalidateScripts([screen])
+// 2. 记录已确认版本 confirmBundleUpdate(screen, version)
+// 3. 强制重新加载（更新 loadTimestamps + retryKey）
+```
+
+### 4. 状态共享
+
+所有分包共享 Zustand store：
+
+```typescript
+// useAppStore.ts
+interface AppState {
+  cartCount: number;
+  addToCart: () => void;
+  clearCart: () => void;
+  pendingUpdate: ModuleUpdateInfo | null;
+  setPendingUpdate: (update: ModuleUpdateInfo | null) => void;
+}
+```
+
+## 快速开始
+
+```bash
+# 安装依赖
+npm install
+
+# 启动开发服务器
 npm start
 
-# OR using Yarn
-yarn start
-```
-
-## Step 2: Build and run your app
-
-With Metro running, open a new terminal window/pane from the root of your React Native project, and use one of the following commands to build and run your Android or iOS app:
-
-### Android
-
-```sh
-# Using npm
-npm run android
-
-# OR using Yarn
-yarn android
-```
-
-### iOS
-
-For iOS, remember to install CocoaPods dependencies (this only needs to be run on first clone or after updating native deps).
-
-The first time you create a new project, run the Ruby bundler to install CocoaPods itself:
-
-```sh
-bundle install
-```
-
-Then, and every time you update your native dependencies, run:
-
-```sh
-bundle exec pod install
-```
-
-For more information, please visit [CocoaPods Getting Started guide](https://guides.cocoapods.org/using/getting-started.html).
-
-```sh
-# Using npm
+# 运行 iOS
 npm run ios
 
-# OR using Yarn
-yarn ios
+# 运行 Android
+npm run android
 ```
 
-If everything is set up correctly, you should see your new app running in the Android Emulator, iOS Simulator, or your connected device.
+## 构建分包
 
-This is one way to run your app — you can also build it directly from Android Studio or Xcode.
+```bash
+# 构建 Android 分包（用于远程加载）
+npm run bundle:android:chunk
 
-## Step 3: Modify your app
+# 构建 iOS 分包
+npm run bundle:ios
 
-Now that you have successfully run the app, let's make changes!
+# 构建主包（Release）
+npm run bundle:android
+```
 
-Open `App.tsx` in your text editor of choice and make some changes. When you save, your app will automatically update and reflect these changes — this is powered by [Fast Refresh](https://reactnative.dev/docs/fast-refresh).
+## 远程部署
 
-When you want to forcefully reload, for example to reset the state of your app, you can perform a full reload:
+1. 执行 `npm run bundle:android:chunk` 生成分包文件
+2. 上传 `build/outputs/bundle/release/android/index.android.bundle` 到服务器
+3. 配置 API 返回分包版本信息
 
-- **Android**: Press the <kbd>R</kbd> key twice or select **"Reload"** from the **Dev Menu**, accessed via <kbd>Ctrl</kbd> + <kbd>M</kbd> (Windows/Linux) or <kbd>Cmd ⌘</kbd> + <kbd>M</kbd> (macOS).
-- **iOS**: Press <kbd>R</kbd> in iOS Simulator.
+### 服务器配置示例
 
-## Congratulations! :tada:
+```json
+{
+  "shop": {
+    "url": "https://your-server.com/shop.chunk.bundle",
+    "version": "1.1.0"
+  },
+  "feature": {
+    "url": "https://your-server.com/feature.chunk.bundle",
+    "version": "1.0.0"
+  }
+}
+```
 
-You've successfully run and modified your React Native App. :partying_face:
+## 版本更新流程
 
-### Now what?
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│ 用户进入分包 │────▶│ 检查版本差异 │────▶│ 发现新版本  │
+└─────────────┘     └─────────────┘     └──────┬──────┘
+                                               │
+                    ┌──────────────────────────┘
+                    ▼
+            ┌─────────────┐         ┌─────────────┐
+            │ 显示更新弹窗 │────────▶│ 点击"更新"  │
+            └─────────────┘         └──────┬──────┘
+                                           │
+                    ┌──────────────────────┴──────────────┐
+                    ▼                                     ▼
+            ┌─────────────┐                       ┌─────────────┐
+            │ 清除模块缓存 │                       │ 点击"取消"  │
+            └──────┬──────┘                       └─────────────┘
+                   │
+                   ▼
+            ┌─────────────┐
+            │ 重新加载分包 │
+            └─────────────┘
+```
 
-- If you want to add this new React Native code to an existing application, check out the [Integration guide](https://reactnative.dev/docs/integration-with-existing-apps).
-- If you're curious to learn more about React Native, check out the [docs](https://reactnative.dev/docs/getting-started).
+## 目录结构
 
-# Troubleshooting
+```
+NebulaRN2/
+├── index.js                    # 入口文件，Re.Pack 配置
+├── App.tsx                     # 主应用，路由与动画
+├── src/
+│   ├── components/
+│   │   ├── BackButton.tsx      # 返回按钮
+│   │   ├── ChunkErrorBoundary.tsx  # 分包加载错误边界
+│   │   └── UpdateDialog.tsx    # 更新提示弹窗
+│   ├── screens/
+│   │   ├── HomeScreen.tsx      # 首页
+│   │   ├── FeatureScreen.tsx   # 功能分包
+│   │   ├── SettingsScreen.tsx  # 设置分包
+│   │   ├── ProfileScreen.tsx   # 个人分包
+│   │   ├── ShopScreen.tsx      # 商城分包
+│   │   └── UpdateTestScreen.tsx # 更新测试页
+│   └── store/
+│       └── useAppStore.ts      # Zustand 状态管理
+└── package.json
+```
 
-If you're having issues getting the above steps to work, see the [Troubleshooting](https://reactnative.dev/docs/troubleshooting) page.
+## 常见问题
 
-# Learn More
+### Q: 开发环境正常，生产环境分包加载失败？
 
-To learn more about React Native, take a look at the following resources:
+检查清单：
+1. 分包是否上传到服务器
+2. 服务器 URL 配置是否正确
+3. 版本号是否已更新
+4. 网络权限是否配置
 
-- [React Native Website](https://reactnative.dev) - learn more about React Native.
-- [Getting Started](https://reactnative.dev/docs/environment-setup) - an **overview** of React Native and how setup your environment.
-- [Learn the Basics](https://reactnative.dev/docs/getting-started) - a **guided tour** of the React Native **basics**.
-- [Blog](https://reactnative.dev/blog) - read the latest official React Native **Blog** posts.
-- [`@facebook/react-native`](https://github.com/facebook/react-native) - the Open Source; GitHub **repository** for React Native.
+### Q: 点击更新后没有重新加载？
 
-家里系统
-ndkVersion = "27.1.12297006" // 改成你安装的版本
+确保：
+1. 调用了 `ScriptManager.shared.invalidateScripts([screen])`
+2. 更新了 `loadTimestamps` 或 `retryKey` 触发组件重新渲染
+
+### Q: 如何测试版本更新？
+
+1. 在商城页面添加/修改内容
+2. 升级版本号
+3. 重新构建分包并上传
+4. 在 App 中进入商城，点击刷新
+5. 观察更新弹窗，点击更新
+
+## License
+
+MIT
