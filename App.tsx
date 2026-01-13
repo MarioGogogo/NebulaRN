@@ -8,7 +8,7 @@ import HomeScreen from './src/screens/HomeScreen';
 import ChunkErrorBoundary from './src/components/ChunkErrorBoundary';
 import UpdateDialog from './src/components/UpdateDialog';
 import { useAppStore } from './src/store/useAppStore';
-import { setVersionCheckCallback } from './index';
+import { setVersionCheckCallback, confirmBundleUpdate } from './index';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -141,6 +141,11 @@ function App(): React.JSX.Element {
 
   const handleUpdateConfirm = useCallback(() => {
     console.log('[App] User confirmed update, clearing cache and reloading...');
+    // 确认更新，更新已确认版本
+    const pending = useAppStore.getState().pendingUpdate;
+    if (pending) {
+      confirmBundleUpdate(pending.screen, pending.latestVersion);
+    }
     setPendingUpdate(null);
     setRetryKey(prev => prev + 1);
   }, [setPendingUpdate]);

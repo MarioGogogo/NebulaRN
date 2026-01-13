@@ -3,10 +3,10 @@
  * 使用 Zustand 展示全局状态
  */
 
-import React, { useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Animated, Easing, StatusBar } from 'react-native';
+import React, { useEffect, useRef, useCallback } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Animated, Easing, StatusBar, ActivityIndicator } from 'react-native';
 import { useAppStore } from '../store/useAppStore';
-import { updateRemoteBundleConfig } from '../../index';
+import { updateRemoteBundleConfig, getRemoteBundleConfig, checkBundleVersion } from '../../index';
 
 // 脉冲动画 Loading 组件
 function LoadingView() {
@@ -135,6 +135,33 @@ const fetchBundleList = async () => {
 export default function HomeScreen({ navigation }: HomeScreenProps) {
   const { isLoggedIn, user, cartCount, darkMode, login, logout, bundleConfigs, setBundleConfigs } = useAppStore();
   const [loading, setLoading] = React.useState(true);
+  const [refreshing, setRefreshing] = React.useState(false);
+
+  // 加载分包配置
+  const loadBundleConfigs = useCallback(async (isRefresh = false) => {
+    if (isRefresh) {
+      setRefreshing(true);
+    } else if (bundleConfigs.length === 0) {
+      setLoading(true);
+    }
+
+    try {
+      const list = await fetchBundleList();
+      setBundleConfigs(list);
+      // 更新 ScriptManager 配置（包含版本信息）
+      const urlConfig: Record<string, { url: string; version: string }> = {};
+      list.forEach(bundle => {
+        urlConfig[bundle.screen] = { url: bundle.url, version: bundle.version };
+      });
+      updateRemoteBundleConfig(urlConfig);
+      console.log('[HomeScreen] 分包配置已更新:', urlConfig);
+    } catch (error) {
+      console.error('[HomeScreen] 加载分包配置失败:', error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [setBundleConfigs]);
 
   useEffect(() => {
     // 如果已经有缓存数据，不再请求
@@ -145,18 +172,26 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     }
 
     console.log('[HomeScreen] 加载分包配置...');
-    setLoading(true);
-    fetchBundleList().then(list => {
-      setBundleConfigs(list);
-      setLoading(false);
-      // 更新 ScriptManager 配置
-      const urlConfig: Record<string, string> = {};
-      list.forEach(bundle => {
-        urlConfig[bundle.screen] = bundle.url;
-      });
-      updateRemoteBundleConfig(urlConfig);
-    });
-  }, [bundleConfigs.length, setBundleConfigs]);
+    loadBundleConfigs(false);
+  }, []); // 只在组件挂载时执行一次
+
+  // 点击分包时直接检查版本
+  const handleNavigate = useCallback(async (screen: string) => {
+    console.log('[HomeScreen] 点击分包:', screen);
+
+    // 直接检查版本
+    const updateInfo = await checkBundleVersion(screen);
+
+    if (updateInfo && updateInfo.isUpdateAvailable) {
+      console.log('[HomeScreen] 该分包有更新:', updateInfo);
+      // 显示更新对话框
+      useAppStore.getState().setPendingUpdate(updateInfo);
+      useAppStore.getState().setCheckingUpdate(false);
+    } else {
+      // 没有更新，直接导航
+      navigation.navigate(screen);
+    }
+  }, [navigation]);
 
   const handleLogin = () => {
     login('mock-token-123', {
@@ -192,6 +227,19 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
 
       <Text style={styles.subtitle}>点击按钮加载分包，状态会共享</Text>
 
+      {/* 刷新按钮 */}
+      <TouchableOpacity
+        style={styles.refreshButton}
+        onPress={() => loadBundleConfigs(true)}
+        disabled={refreshing}
+      >
+        {refreshing ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <Text style={styles.refreshButtonText}>🔄 刷新分包配置</Text>
+        )}
+      </TouchableOpacity>
+
       {loading ? (
         <LoadingView />
       ) : bundleConfigs.length > 0 ? (
@@ -200,7 +248,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
             <TouchableOpacity
               key={item.uniqueKey}
               style={[styles.navButton, { backgroundColor: item.color }]}
-              onPress={() => navigation.navigate(item.screen)}
+              onPress={() => handleNavigate(item.screen)}
             >
               <Text style={styles.buttonEmoji}>{item.emoji}</Text>
               <View style={styles.buttonContent}>
@@ -367,5 +415,20 @@ const styles = StyleSheet.create({
     marginTop: 8,
     fontSize: 13,
     color: '#999',
+  },
+  refreshButton: {
+    backgroundColor: '#673AB7',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    alignSelf: 'center',
+    marginBottom: 16,
+    minWidth: 160,
+    alignItems: 'center',
+  },
+  refreshButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });
