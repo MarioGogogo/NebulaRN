@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, StatusBar } from 'react-native';
 import BackButton, { Badge } from '../components/BackButton';
 import { useAppStore } from '../store/useAppStore';
 
@@ -27,6 +27,7 @@ export default function ShopScreen({ navigation }: ShopScreenProps) {
 
   return (
     <View style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor="#FFF3E0" />
       <View style={styles.header}>
         <Text style={styles.title}>🛒 商城页面</Text>
         <Badge text="shop" color="#FF9800" />

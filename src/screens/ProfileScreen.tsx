@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, StatusBar } from 'react-native';
 import BackButton, { Badge } from '../components/BackButton';
 import { useAppStore } from '../store/useAppStore';
 
@@ -20,6 +20,7 @@ export default function ProfileScreen({ navigation }: ProfileScreenProps) {
 
   return (
     <View style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor="#E3F2FD" />
       <View style={styles.avatar}>
         <Text style={styles.avatarText}>{isLoggedIn ? '😊' : '👤'}</Text>
       </View>

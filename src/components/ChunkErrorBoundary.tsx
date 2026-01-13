@@ -5,6 +5,7 @@ import ErrorScreen from '../screens/ErrorScreen';
 interface Props {
   children: ReactNode;
   onGoBack: () => void;
+  onRetry?: () => void;
 }
 
 interface State {
@@ -28,13 +29,17 @@ export default class ChunkErrorBoundary extends Component<Props, State> {
 
   handleRetry = async () => {
     console.log('[ChunkErrorBoundary] Retrying download...');
-    
-    // 关键修复：清除所有脚本的缓存，强制重新下载
-    // 你也可以传递具体的 scriptId 数组如果能获取到的话，但清空所有是最稳妥的重试方式
+
+    // 清除脚本缓存，强制重新下载
     await ScriptManager.shared.invalidateScripts([]);
-    
-    // 重置错误状态，触发 React 重新渲染
-    this.setState({ hasError: false, error: null });
+
+    // 如果父组件提供了 onRetry，调用它（让父组件决定是否强制重新挂载）
+    if (this.props.onRetry) {
+      this.props.onRetry();
+    } else {
+      // 否则只重置错误状态
+      this.setState({ hasError: false, error: null });
+    }
   };
 
   render() {

@@ -1,29 +1,29 @@
 /**
- * 分包页面 - FeatureScreen
- * 使用共用组件 BackButton 和 Badge
+ * 分包页面 - UpdateTestScreen
+ * 模拟模块更新测试页面
  */
 
 import React from 'react';
 import { View, Text, StyleSheet, StatusBar } from 'react-native';
 import BackButton, { Badge } from '../components/BackButton';
 
-interface FeatureScreenProps {
+interface UpdateTestScreenProps {
   navigation: {
     goBack: () => void;
   };
 }
 
-export default function FeatureScreen({ navigation }: FeatureScreenProps) {
+export default function UpdateTestScreen({ navigation }: UpdateTestScreenProps) {
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFEBEE" />
+      <StatusBar barStyle="dark-content" backgroundColor="#E8EAF6" />
       <View style={styles.header}>
-        <Text style={styles.title}>🚀 功能页面</Text>
-        <Badge text="feature" color="#F44336" />
+        <Text style={styles.title}>🔄 更新测试</Text>
+        <Badge text="update" color="#673AB7" />
       </View>
-      <Text style={styles.description}>这是 Feature 分包</Text>
-      <Text style={styles.info}>使用了共用组件 BackButton 和 Badge</Text>
-      <BackButton onPress={() => navigation.goBack()} color="#F44336" />
+      <Text style={styles.description}>这是更新测试分包</Text>
+      <Text style={styles.info}>用于测试模块版本更新弹窗功能</Text>
+      <BackButton onPress={() => navigation.goBack()} color="#673AB7" />
     </View>
   );
 }
@@ -33,7 +33,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#FFEBEE',
+    backgroundColor: '#E8EAF6',
     padding: 20,
   },
   header: {
@@ -44,7 +44,8 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#C62828',
+    color: '#4527A0',
+    marginRight: 8,
   },
   description: {
     fontSize: 16,

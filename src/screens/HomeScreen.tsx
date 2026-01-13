@@ -3,9 +3,72 @@
  * 使用 Zustand 展示全局状态
  */
 
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Animated, Easing, StatusBar } from 'react-native';
 import { useAppStore } from '../store/useAppStore';
+import { updateRemoteBundleConfig } from '../../index';
+
+// 脉冲动画 Loading 组件
+function LoadingView() {
+  const pulseAnim = useRef(new Animated.Value(0.3));
+  const rotateAnim = useRef(new Animated.Value(0));
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim.current, {
+          toValue: 1,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim.current, {
+          toValue: 0.3,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+
+    Animated.loop(
+      Animated.timing(rotateAnim.current, {
+        toValue: 1,
+        duration: 2000,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      })
+    ).start();
+
+    return () => {
+      pulseAnim.current.stopAnimation();
+      rotateAnim.current.stopAnimation();
+    };
+  }, []);
+
+  const spin = rotateAnim.current.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  });
+
+  return (
+    <View style={styles.loadingOverlay}>
+      <View style={styles.loadingDialog}>
+        <Animated.View
+          style={[
+            styles.loadingRing,
+            {
+              transform: [{ rotate: spin }],
+              opacity: pulseAnim.current,
+            },
+          ]}
+        >
+          <View style={styles.loadingInner} />
+        </Animated.View>
+        <Text style={styles.loadingText}>正在加载分包配置</Text>
+        <Text style={styles.loadingSubtext}>请稍候...</Text>
+      </View>
+    </View>
+  );
+}
 
 interface HomeScreenProps {
   navigation: {
@@ -13,18 +76,88 @@ interface HomeScreenProps {
   };
 }
 
-const navButtons = [
-  { screen: 'feature', label: '功能页面', color: '#F44336', emoji: '🚀' },
-  { screen: 'settings', label: '设置页面', color: '#4CAF50', emoji: '⚙️' },
-  { screen: 'profile', label: '用户中心', color: '#2196F3', emoji: '👤' },
-  { screen: 'shop', label: '商城页面', color: '#FF9800', emoji: '🛒' },
-];
+// 屏幕映射配置
+const screenMapping: Record<string, { label: string; color: string; emoji: string }> = {
+  profile: { label: '用户中心', color: '#2196F3', emoji: '👤' },
+  settings: { label: '设置页面', color: '#4CAF50', emoji: '⚙️' },
+  shop: { label: '商城页面', color: '#FF9800', emoji: '🛒' },
+  feature: { label: '功能页面', color: '#F44336', emoji: '🚀' },
+  update: { label: '更新测试', color: '#673AB7', emoji: '🔄' },
+};
+
+// API 地址
+const API_URL = 'https://m1.apifoxmock.com/m1/1149415-2096860-default/listdes';
+
+// 请求获取分包列表
+const fetchBundleList = async () => {
+  try {
+    const response = await fetch(API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({}),
+    });
+
+    const data = await response.json();
+    console.log('[HomeScreen] API response:', data);
+
+    if (data.code !== '200' || !data.results) {
+      throw new Error(data.msg || '请求失败');
+    }
+
+    return data.results.map((item: { des: string; url: string; version: string }, index: number) => {
+      // 使用 URL 路径中的目录名 + 文件名作为唯一标识
+      const urlParts = item.url.split('/').filter(Boolean);
+      const fileName = urlParts[urlParts.length - 1]?.replace('.chunk.bundle', '') || `bundle-${index}`;
+      const dirName = urlParts[urlParts.length - 2] || 'default';
+      const screen = `${dirName}_${fileName}`; // 例如: doudizhu_profile
+
+      const mapping = screenMapping[fileName] || { label: item.des, color: '#9E9E9E', emoji: '📦' };
+
+      return {
+        screen: fileName, // 保持原有逻辑用于导航
+        uniqueKey: screen, // 用于 React key
+        label: mapping.label,
+        color: mapping.color,
+        emoji: mapping.emoji,
+        url: item.url,
+        version: item.version,
+        des: item.des,
+      };
+    });
+  } catch (error) {
+    console.error('[HomeScreen] 请求分包列表失败:', error);
+    throw error;
+  }
+};
 
 export default function HomeScreen({ navigation }: HomeScreenProps) {
-  // 使用 Zustand 状态
-  const { isLoggedIn, user, cartCount, darkMode, login, logout } = useAppStore();
+  const { isLoggedIn, user, cartCount, darkMode, login, logout, bundleConfigs, setBundleConfigs } = useAppStore();
+  const [loading, setLoading] = React.useState(true);
 
-  // 模拟登录
+  useEffect(() => {
+    // 如果已经有缓存数据，不再请求
+    if (bundleConfigs.length > 0) {
+      console.log('[HomeScreen] 使用缓存的分包配置');
+      setLoading(false);
+      return;
+    }
+
+    console.log('[HomeScreen] 加载分包配置...');
+    setLoading(true);
+    fetchBundleList().then(list => {
+      setBundleConfigs(list);
+      setLoading(false);
+      // 更新 ScriptManager 配置
+      const urlConfig: Record<string, string> = {};
+      list.forEach(bundle => {
+        urlConfig[bundle.screen] = bundle.url;
+      });
+      updateRemoteBundleConfig(urlConfig);
+    });
+  }, [bundleConfigs.length, setBundleConfigs]);
+
   const handleLogin = () => {
     login('mock-token-123', {
       name: 'React Native 开发者',
@@ -35,8 +168,9 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
 
   return (
     <View style={[styles.container, darkMode && styles.darkContainer]}>
+      <StatusBar barStyle={darkMode ? 'light-content' : 'dark-content'} backgroundColor={darkMode ? '#1a1a1a' : '#f5f5f5'} />
       <Text style={[styles.title, darkMode && styles.darkText]}>📦 Re.Pack 分包演示</Text>
-      
+
       {/* 状态展示区域 */}
       <View style={styles.statusCard}>
         <Text style={styles.statusTitle}>🔗 Zustand 全局状态</Text>
@@ -45,9 +179,9 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         </Text>
         <Text style={styles.statusItem}>购物车: 🛒 {cartCount} 件</Text>
         <Text style={styles.statusItem}>深色模式: {darkMode ? '🌙 开启' : '☀️ 关闭'}</Text>
-        
-        <TouchableOpacity 
-          style={[styles.loginButton, isLoggedIn && styles.logoutButton]} 
+
+        <TouchableOpacity
+          style={[styles.loginButton, isLoggedIn && styles.logoutButton]}
           onPress={isLoggedIn ? logout : handleLogin}
         >
           <Text style={styles.loginButtonText}>
@@ -55,29 +189,33 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
           </Text>
         </TouchableOpacity>
       </View>
-      
+
       <Text style={styles.subtitle}>点击按钮加载分包，状态会共享</Text>
-      
-      <ScrollView style={styles.buttonList} showsVerticalScrollIndicator={false}>
-        {navButtons.map((item) => (
-          <TouchableOpacity
-            key={item.screen}
-            style={[styles.navButton, { backgroundColor: item.color }]}
-            onPress={() => navigation.navigate(item.screen)}
-          >
-            <Text style={styles.buttonEmoji}>{item.emoji}</Text>
-            <View style={styles.buttonContent}>
-              <Text style={styles.buttonLabel}>{item.label}</Text>
-              <Text style={styles.buttonChunk}>chunk: {item.screen}</Text>
-            </View>
-            {item.screen === 'shop' && cartCount > 0 && (
-              <View style={styles.badge}>
-                <Text style={styles.badgeText}>{cartCount}</Text>
+
+      {loading ? (
+        <LoadingView />
+      ) : bundleConfigs.length > 0 ? (
+        <ScrollView style={styles.buttonList} showsVerticalScrollIndicator={false}>
+          {bundleConfigs.map((item) => (
+            <TouchableOpacity
+              key={item.uniqueKey}
+              style={[styles.navButton, { backgroundColor: item.color }]}
+              onPress={() => navigation.navigate(item.screen)}
+            >
+              <Text style={styles.buttonEmoji}>{item.emoji}</Text>
+              <View style={styles.buttonContent}>
+                <Text style={styles.buttonLabel}>{item.label}</Text>
+                <Text style={styles.buttonChunk}>chunk: {item.screen} ({item.version})</Text>
               </View>
-            )}
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+              {item.screen === 'shop' && cartCount > 0 && (
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>{cartCount}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      ) : null}
     </View>
   );
 }
@@ -179,5 +317,55 @@ const styles = StyleSheet.create({
     color: '#FF9800',
     fontSize: 12,
     fontWeight: 'bold',
+  },
+  loadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 999,
+  },
+  loadingDialog: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 24,
+    alignItems: 'center',
+    minWidth: 160,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  loadingRing: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    borderWidth: 3,
+    borderColor: '#2196F3',
+    borderTopColor: '#64B5F6',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingInner: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(33, 150, 243, 0.1)',
+  },
+  loadingText: {
+    marginTop: 20,
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+  },
+  loadingSubtext: {
+    marginTop: 8,
+    fontSize: 13,
+    color: '#999',
   },
 });

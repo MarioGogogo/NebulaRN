@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { View, Text, StyleSheet, Switch } from 'react-native';
+import { View, Text, StyleSheet, Switch, StatusBar } from 'react-native';
 import BackButton, { Badge } from '../components/BackButton';
 import { useAppStore } from '../store/useAppStore';
 
@@ -20,6 +20,7 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
 
   return (
     <View style={[styles.container, darkMode && styles.darkContainer]}>
+      <StatusBar barStyle={darkMode ? 'light-content' : 'dark-content'} backgroundColor={darkMode ? '#1a1a1a' : '#E8F5E9'} />
       <View style={styles.header}>
         <Text style={[styles.title, darkMode && styles.darkText]}>⚙️ 设置页面</Text>
         <Badge text="settings" color="#4CAF50" />
