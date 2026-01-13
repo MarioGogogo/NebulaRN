@@ -12,6 +12,7 @@
 
 import {AppRegistry} from 'react-native';
 import {ScriptManager, Script} from '@callstack/repack/client';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import App from './App';
 
 const appJson = require('./app.json');
@@ -30,24 +31,36 @@ export function setVersionCheckCallback(callback) {
 }
 
 // 确认更新某个分包（用户点击更新对话框的确认按钮后调用）
+// 返回 true 表示需要重新加载
 export function confirmBundleUpdate(screen, version) {
-  lastConfirmedVersion[screen] = version;
-  console.log(`[ScriptManager] Bundle ${screen} confirmed to version ${version}`);
+  const oldVersion = loadedVersions[screen];
+  loadedVersions[screen] = version;
+  console.log(`[ScriptManager] Bundle ${screen} confirmed: ${oldVersion} -> ${version}`);
+  return oldVersion && oldVersion !== version;
 }
 
 // 更新远程分包配置（供外部调用）
 export function updateRemoteBundleConfig(config) {
-  remoteBundleConfig = {...remoteBundleConfig, ...config};
-
-  // 清除已加载的版本，强制重新检查版本
-  for (const key in loadedVersions) {
-    delete loadedVersions[key];
+  // 在更新配置前，保存旧版本到 loadedVersions（如果还没有记录的话）
+  // 这样当新版本到来时，我们可以检测到变化
+  for (const scriptId in config) {
+    const oldConfig = remoteBundleConfig[scriptId];
+    if (oldConfig && !loadedVersions[scriptId]) {
+      const oldVersion = typeof oldConfig === 'string' ? null : oldConfig.version;
+      if (oldVersion) {
+        loadedVersions[scriptId] = oldVersion;
+        console.log(`[ScriptManager] Initialize loadedVersions for ${scriptId}: ${oldVersion}`);
+      }
+    }
   }
 
+  remoteBundleConfig = {...remoteBundleConfig, ...config};
+
   console.log(
-    '[ScriptManager] Remote bundle config updated, versions cleared:',
+    '[ScriptManager] Remote bundle config updated:',
     remoteBundleConfig,
   );
+  console.log('[ScriptManager] Loaded versions:', loadedVersions);
 }
 
 // 直接检查某个分包是否有更新（供外部调用）
@@ -63,17 +76,18 @@ export async function checkBundleVersion(scriptId) {
     return null;
   }
 
-  const confirmedVersion = lastConfirmedVersion[scriptId];
-  const isUpdateAvailable = confirmedVersion && confirmedVersion !== latestVersion;
+  const cachedVersion = loadedVersions[scriptId];
+  // 只有当已经加载过且版本不同时才是更新
+  const isUpdateAvailable = cachedVersion && cachedVersion !== latestVersion;
 
   console.log(
-    `[ScriptManager] Check version for ${scriptId}: confirmed=${confirmedVersion}, latest=${latestVersion}, isUpdateAvailable=${isUpdateAvailable}`,
+    `[ScriptManager] Check version for ${scriptId}: cached=${cachedVersion}, latest=${latestVersion}, isUpdateAvailable=${isUpdateAvailable}`,
   );
 
   if (isUpdateAvailable) {
     return {
       screen: scriptId,
-      currentVersion: confirmedVersion,
+      currentVersion: cachedVersion,
       latestVersion: latestVersion,
       isUpdateAvailable: true,
     };
@@ -82,19 +96,11 @@ export async function checkBundleVersion(scriptId) {
   return null;
 }
 
-// 配置 ScriptManager 用于代码分割 (使用内存存储替代 AsyncStorage)
-const storage = {
-  getItem: async () => null,
-  setItem: async () => {},
-  removeItem: async () => {},
-};
+// 配置 ScriptManager 用于代码分割（使用 AsyncStorage 实现可靠的缓存管理）
+ScriptManager.shared.setStorage(AsyncStorage);
 
-ScriptManager.shared.setStorage(storage);
-
-// 缓存已加载的模块版本信息
+// 缓存已加载的模块版本信息（首次加载后记录版本，用于后续比较）
 const loadedVersions = {};
-// 记录上次已确认的版本（持久化，不随缓存清除而丢失）
-const lastConfirmedVersion = {};
 
 ScriptManager.shared.addResolver(async scriptId => {
   console.log(`[ScriptManager] Resolving: ${scriptId}, DEV: ${__DEV__}`);
@@ -115,45 +121,21 @@ ScriptManager.shared.addResolver(async scriptId => {
 
   const url = typeof config === 'string' ? config : config.url;
   const latestVersion = typeof config === 'string' ? null : config.version;
+  const cachedVersion = loadedVersions[scriptId];
 
-  // 版本检查：如果有更新且用户已确认更新，则跳过缓存
-  if (latestVersion && onVersionCheckCallback) {
-    const cachedVersion = loadedVersions[scriptId];
-    const confirmedVersion = lastConfirmedVersion[scriptId];
+  // 在 URL 中添加版本参数，让 Re.Pack 自动检测变化
+  const versionedUrl = latestVersion ? `${url}?v=${latestVersion}` : url;
 
-    // 只在真正有更新时显示对话框（排除首次加载和相同版本）
-    const isUpdateAvailable = confirmedVersion && confirmedVersion !== latestVersion;
-
-    if (isUpdateAvailable) {
-      console.log(
-        `[ScriptManager] ${scriptId} has update: ${confirmedVersion} -> ${latestVersion}`,
-      );
-      // 通知 App.tsx 显示更新对话框
-      onVersionCheckCallback({
-        screen: scriptId,
-        currentVersion: confirmedVersion,
-        latestVersion: latestVersion,
-        isUpdateAvailable: true,
-      });
-
-      // 等待用户确认更新
-      console.log(
-        `[ScriptManager] Waiting for user confirmation to update ${scriptId}`,
-      );
-    }
-
-    // 更新缓存版本和已确认版本
+  // 首次加载时，记录版本
+  if (!cachedVersion && latestVersion) {
     loadedVersions[scriptId] = latestVersion;
-    // 如果没有已确认版本（首次加载），将其设置为当前版本
-    if (!confirmedVersion) {
-      lastConfirmedVersion[scriptId] = latestVersion;
-    }
+    console.log(`[ScriptManager] First load ${scriptId} version: ${latestVersion}`);
   }
 
-  console.log(`[ScriptManager] Loading remote chunk: ${scriptId} from ${url}`);
+  console.log(`[ScriptManager] Loading remote chunk: ${scriptId} from ${versionedUrl}`);
   return {
-    url,
-    cache: true,
+    url: versionedUrl,
+    cache: true, // Re.Pack 会基于 URL 变化自动更新缓存
   };
 });
 

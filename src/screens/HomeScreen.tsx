@@ -6,7 +6,7 @@
 import React, { useEffect, useRef, useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Animated, Easing, StatusBar, ActivityIndicator } from 'react-native';
 import { useAppStore } from '../store/useAppStore';
-import { updateRemoteBundleConfig, getRemoteBundleConfig, checkBundleVersion } from '../../index';
+import { updateRemoteBundleConfig, checkBundleVersion } from '../../index';
 
 // 脉冲动画 Loading 组件
 function LoadingView() {
@@ -225,20 +225,20 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         </TouchableOpacity>
       </View>
 
-      <Text style={styles.subtitle}>点击按钮加载分包，状态会共享</Text>
-
-      {/* 刷新按钮 */}
-      <TouchableOpacity
-        style={styles.refreshButton}
-        onPress={() => loadBundleConfigs(true)}
-        disabled={refreshing}
-      >
-        {refreshing ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.refreshButtonText}>🔄 刷新分包配置</Text>
-        )}
-      </TouchableOpacity>
+      <View style={styles.subtitleRow}>
+        <Text style={styles.subtitle}>点击按钮加载分包，状态会共享</Text>
+        <TouchableOpacity
+          style={styles.refreshButton}
+          onPress={() => loadBundleConfigs(true)}
+          disabled={refreshing}
+        >
+          {refreshing ? (
+            <ActivityIndicator color="#fff" size="small" />
+          ) : (
+            <Text style={styles.refreshButtonText}>刷新</Text>
+          )}
+        </TouchableOpacity>
+      </View>
 
       {loading ? (
         <LoadingView />
@@ -322,7 +322,11 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 12,
     color: '#999',
-    textAlign: 'center',
+    flex: 1,
+  },
+  subtitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginBottom: 12,
   },
   buttonList: {
@@ -418,17 +422,13 @@ const styles = StyleSheet.create({
   },
   refreshButton: {
     backgroundColor: '#673AB7',
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    alignSelf: 'center',
-    marginBottom: 16,
-    minWidth: 160,
-    alignItems: 'center',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 6,
   },
   refreshButtonText: {
     color: '#fff',
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '600',
   },
 });

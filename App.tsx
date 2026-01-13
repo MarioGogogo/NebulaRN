@@ -4,43 +4,38 @@
 
 import React, { Suspense, useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { View, StyleSheet, ActivityIndicator, Animated, Dimensions } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import HomeScreen from './src/screens/HomeScreen';
 import ChunkErrorBoundary from './src/components/ChunkErrorBoundary';
 import UpdateDialog from './src/components/UpdateDialog';
 import { useAppStore } from './src/store/useAppStore';
 import { setVersionCheckCallback, confirmBundleUpdate } from './index';
+import { ScriptManager } from '@callstack/repack/client';
+import RNRestart from 'react-native-restart';
+
+// 重启后自动导航的 key
+const PENDING_NAVIGATION_KEY = 'pending_navigation_screen';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-// 使用 React.lazy 和 webpackChunkName 实现多分包加载
-const FeatureScreen = React.lazy(
-  () => import(/* webpackChunkName: "feature" */ './src/screens/FeatureScreen'),
-);
-
-const SettingsScreen = React.lazy(
-  () => import(/* webpackChunkName: "settings" */ './src/screens/SettingsScreen'),
-);
-
-const ProfileScreen = React.lazy(
-  () => import(/* webpackChunkName: "profile" */ './src/screens/ProfileScreen'),
-);
-
-const ShopScreen = React.lazy(
-  () => import(/* webpackChunkName: "shop" */ './src/screens/ShopScreen'),
-);
-
-const UpdateTestScreen = React.lazy(
-  () => import(/* webpackChunkName: "update" */ './src/screens/UpdateTestScreen'),
-);
-
-// 屏幕映射
-const screens: Record<string, React.LazyExoticComponent<React.ComponentType<any>>> = {
-  feature: FeatureScreen,
-  settings: SettingsScreen,
-  profile: ProfileScreen,
-  shop: ShopScreen,
-  update: UpdateTestScreen,
-};
+// 创建 lazy 组件的工厂函数
+const createLazyScreens = () => ({
+  feature: React.lazy(
+    () => import(/* webpackChunkName: "feature" */ './src/screens/FeatureScreen'),
+  ),
+  settings: React.lazy(
+    () => import(/* webpackChunkName: "settings" */ './src/screens/SettingsScreen'),
+  ),
+  profile: React.lazy(
+    () => import(/* webpackChunkName: "profile" */ './src/screens/ProfileScreen'),
+  ),
+  shop: React.lazy(
+    () => import(/* webpackChunkName: "shop" */ './src/screens/ShopScreen'),
+  ),
+  update: React.lazy(
+    () => import(/* webpackChunkName: "update" */ './src/screens/UpdateTestScreen'),
+  ),
+});
 
 // 动画配置
 const ANIMATION_DURATION = 350;
@@ -50,6 +45,12 @@ function App(): React.JSX.Element {
   const [currentScreen, setCurrentScreen] = useState<string>('home');
   const [nextScreen, setNextScreen] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
+  // 记录每个分包的版本，变化时会触发 lazy 组件重新创建
+  const [screenVersions, setScreenVersions] = useState<Record<string, number>>({});
+
+  // 动态创建 lazy 组件，当 screenVersions 变化时重新创建
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const screens = useMemo(() => createLazyScreens(), [screenVersions]);
 
   // 动画值
   const homeProgress = useRef(new Animated.Value(1)).current;
@@ -139,15 +140,54 @@ function App(): React.JSX.Element {
     setVersionCheckCallback(handleVersionCheck);
   }, [handleVersionCheck]);
 
-  const handleUpdateConfirm = useCallback(() => {
-    console.log('[App] User confirmed update, clearing cache and reloading...');
-    // 确认更新，更新已确认版本
+  // 启动时检查是否有待导航的页面（用于重启后自动跳转）
+  useEffect(() => {
+    const checkPendingNavigation = async () => {
+      try {
+        const pendingScreen = await AsyncStorage.getItem(PENDING_NAVIGATION_KEY);
+        if (pendingScreen) {
+          console.log(`[App] Found pending navigation to: ${pendingScreen}`);
+          // 清除标记
+          await AsyncStorage.removeItem(PENDING_NAVIGATION_KEY);
+          // 延迟一小段时间等待应用初始化完成
+          setTimeout(() => {
+            startSlideIn(pendingScreen);
+          }, 500);
+        }
+      } catch (error) {
+        console.error('[App] Error checking pending navigation:', error);
+      }
+    };
+    checkPendingNavigation();
+  }, []);
+
+  const handleUpdateConfirm = useCallback(async () => {
+    console.log('[App] User confirmed update, clearing cache and restarting...');
     const pending = useAppStore.getState().pendingUpdate;
-    if (pending) {
+    if (!pending) return;
+
+    try {
+      // 1. 清除该模块的缓存
+      await ScriptManager.shared.invalidateScripts([pending.screen]);
+      console.log(`[App] Cache cleared for ${pending.screen}`);
+
+      // 2. 确认更新，更新已加载版本记录
       confirmBundleUpdate(pending.screen, pending.latestVersion);
+
+      // 3. 保存待导航页面，重启后自动跳转
+      await AsyncStorage.setItem(PENDING_NAVIGATION_KEY, pending.screen);
+      console.log(`[App] Saved pending navigation: ${pending.screen}`);
+
+      // 4. 关闭弹窗
+      setPendingUpdate(null);
+
+      // 5. 重启应用以加载新版本
+      console.log('[App] Restarting app to load new version...');
+      RNRestart.restart();
+    } catch (error) {
+      console.error('[App] Failed to update module:', error);
+      setPendingUpdate(null);
     }
-    setPendingUpdate(null);
-    setRetryKey(prev => prev + 1);
   }, [setPendingUpdate]);
 
   const handleUpdateCancel = useCallback(() => {
@@ -197,7 +237,11 @@ function App(): React.JSX.Element {
           },
         ]}
       >
-        <ChunkErrorBoundary key={retryKey} onGoBack={goBack} onRetry={handleRetry}>
+        <ChunkErrorBoundary
+          key={`${screenName}-${screenVersions[screenName] || retryKey}`}
+          onGoBack={goBack}
+          onRetry={handleRetry}
+        >
           <Suspense fallback={<ActivityIndicator size="large" style={styles.loading} />}>
             <Screen navigation={{ goBack }} />
           </Suspense>

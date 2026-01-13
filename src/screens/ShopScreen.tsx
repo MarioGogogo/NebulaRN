@@ -19,6 +19,8 @@ const products = [
   { id: 2, name: 'Re.Pack 进阶', price: 199, emoji: '📦' },
   { id: 3, name: '分包实战课程', price: 299, emoji: '🎓' },
   { id: 4, name: 'Module Federation', price: 399, emoji: '🔗' },
+  { id: 5, name: 'TypeScript 实战', price: 149, emoji: '📒' },
+  { id: 6, name: '状态管理精通', price: 249, emoji: '🗂️' },
 ];
 
 export default function ShopScreen({ navigation }: ShopScreenProps) {
@@ -41,6 +43,12 @@ export default function ShopScreen({ navigation }: ShopScreenProps) {
             <Text style={styles.clearButtonText}>清空</Text>
           </TouchableOpacity>
         )}
+      </View>
+
+      {/* 限时优惠横幅 */}
+      <View style={styles.promoBanner}>
+        <Text style={styles.promoEmoji}>🎉</Text>
+        <Text style={styles.promoText}>限时优惠！满2件减30元</Text>
       </View>
       
       <Text style={styles.subtitle}>点击"购买"添加到购物车，返回首页查看数量</Text>
@@ -137,6 +145,23 @@ const styles = StyleSheet.create({
   cartText: {
     fontSize: 16,
     fontWeight: 'bold',
+    color: '#E65100',
+  },
+  promoBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFE0B2',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
+  },
+  promoEmoji: {
+    fontSize: 20,
+    marginRight: 8,
+  },
+  promoText: {
+    fontSize: 14,
+    fontWeight: '600',
     color: '#E65100',
   },
   clearButton: {

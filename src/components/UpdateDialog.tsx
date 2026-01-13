@@ -5,7 +5,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Modal } from 'react-native';
 import { useAppStore } from '../store/useAppStore';
-import { ScriptManager } from '@callstack/repack/client';
 
 interface UpdateDialogProps {
   onUpdate: () => void;
@@ -16,12 +15,6 @@ export default function UpdateDialog({ onUpdate, onCancel }: UpdateDialogProps) 
   const { pendingUpdate, darkMode } = useAppStore();
 
   if (!pendingUpdate) return null;
-
-  const handleUpdate = async () => {
-    // 清除该模块的缓存
-    await ScriptManager.shared.invalidateScripts([pendingUpdate.screen]);
-    onUpdate();
-  };
 
   return (
     <Modal
@@ -67,7 +60,7 @@ export default function UpdateDialog({ onUpdate, onCancel }: UpdateDialogProps) 
 
             <TouchableOpacity
               style={[styles.button, styles.updateButton]}
-              onPress={handleUpdate}
+              onPress={onUpdate}
             >
               <Text style={styles.updateButtonText}>立即更新</Text>
             </TouchableOpacity>
