@@ -13,6 +13,9 @@
     "bundle:android:chunk": "react-native bundle --entry-file index.js --platform android --bundle-output android/app/src/main/assets/index.android.chunk.bundle --assets-dest android/app/src/main/res",
     "build:android": "./scripts/build-android.sh release",
     "build:android:debug": "./scripts/build-android.sh debug",
+    "build:android:arm64": "./scripts/build-android.sh release arm64-v8a",
+    "build:android:arm32": "./scripts/build-android.sh release armeabi-v7a",
+    "build:android:help": "./scripts/build-android.sh help",
     "test": "jest"
   },
   "dependencies": {

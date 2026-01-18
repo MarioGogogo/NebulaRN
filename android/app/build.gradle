@@ -47,8 +47,10 @@ react {
     //   The hermes compiler command to run. By default it is 'hermesc'
     // hermesCommand = "$rootDir/my-custom-hermesc/bin/hermesc"
     //
-    //   The list of flags to pass to the Hermes compiler. By default is "-O", "-output-source-map"
-    // hermesFlags = ["-O", "-output-source-map"]
+    //   The list of flags to pass to the Hermes compiler.
+    //   Release: "-O" 优化 + 生成 source map
+    //   Debug: 空数组（由 gradle.properties 控制是否启用 Hermes）
+    hermesFlags = ["-O", "-output-source-map"]
 
     /* Autolinking */
     autolinkLibrariesWithApp()
@@ -57,25 +59,12 @@ react {
 /**
  * Set this to true to Run Proguard on Release builds to minify the Java bytecode.
  */
-def enableProguardInReleaseBuilds = false
-
-/**
- * The preferred build flavor of JavaScriptCore (JSC)
- *
- * For example, to use the international variant, you can use:
- * `def jscFlavor = 'org.webkit:android-jsc-intl:+'`
- *
- * The international variant includes ICU i18n library and necessary data
- * allowing to use e.g. `Date.toLocaleString` and `String.localeCompare` that
- * give correct results when using with locales other than en-US. Note that
- * this variant is about 6MiB larger per architecture than default.
- */
-def jscFlavor = 'org.webkit:android-jsc:+'
+def enableProguardInReleaseBuilds = true
 
 android {
     ndkVersion rootProject.ext.ndkVersion
     buildToolsVersion rootProject.ext.buildToolsVersion
-    compileSdk rootProject.ext.compileSdkVersion
+    compileSdkVersion rootProject.ext.compileSdkVersion
 
     namespace "com.nebularn2"
     defaultConfig {
@@ -85,6 +74,17 @@ android {
         versionCode 1
         versionName "1.0"
     }
+
+    // APK 按 CPU 架构拆分，减少 APK 体积
+    // 支持的架构: armeabi-v7a (32位ARM), arm64-v8a (64位ARM), x86, x86_64
+    splits {
+        abi {
+            enable true
+            reset()
+            include "armeabi-v7a", "arm64-v8a", "x86", "x86_64"
+            universalApk true // 同时生成通用 APK（包含所有架构）
+        }
+    }
     signingConfigs {
         debug {
             storeFile file('debug.keystore')
@@ -92,28 +92,42 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        release {
+            // 生产环境请使用自己的签名文件
+            storeFile file('../my-release-key.keystore')
+            storePassword System.getenv("KEYSTORE_PASSWORD") ?: "12345678"
+            keyAlias System.getenv("KEY_ALIAS") ?: "my-key-alias"
+            keyPassword System.getenv("KEY_PASSWORD") ?: "12345678"
+        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
+            // Debug 模式：Hermes 由 gradle.properties 控制
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
+            // 使用 release 签名
+            signingConfig signingConfigs.release
             minifyEnabled enableProguardInReleaseBuilds
+            shrinkResources enableProguardInReleaseBuilds // 移除未使用资源
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }
     }
+
+    // 为不同架构的 APK 添加后缀名
+    project.ext.abiComponents = [
+        universal: "",
+        "armeabi-v7a": "-armeabi-v7a",
+        "arm64-v8a": "-arm64-v8a",
+        "x86": "-x86",
+        "x86_64": "-x86_64"
+    ]
 }
 
 dependencies {
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
 
-    if (hermesEnabled.toBoolean()) {
-        implementation("com.facebook.react:hermes-android")
-    } else {
-        implementation jscFlavor
-    }
+    // Hermes 引擎（体积更小，启动更快）
+    implementation("com.facebook.react:hermes-android")
 }
